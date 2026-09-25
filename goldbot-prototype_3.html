@@ -100,7 +100,7 @@
   .feed {
     flex: 1 1 auto;
     overflow-y: auto;
-    padding: 76px 16px 108px;
+    padding: 76px 0 108px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -135,20 +135,22 @@
   }
   .chart-card.expanded { height: 435px; }
   .chart-card canvas { display: block; width: 100%; height: 100%; }
-  .chart-close {
+  /* snapshot state — only the newest widget stays fully live, older ones dim and get a timestamp */
+  .widget-group.snapshot {
+    opacity: 0.45;
+    transition: opacity .3s ease;
+  }
+  .snapshot-label {
     position: absolute;
+    left: 12px;
     top: 12px;
-    right: 12px;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.85);
+    background: rgba(255,255,255,0.9);
     backdrop-filter: blur(6px);
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
   }
 
   /* stat cards */
@@ -181,7 +183,7 @@
   }
 
   /* chat bubbles */
-  .msg-row { display: flex; flex: 0 0 auto; }
+  .msg-row { display: flex; flex: 0 0 auto; padding: 0 16px; }
   .msg-row.user { justify-content: flex-end; }
   .msg-row.bot { justify-content: flex-start; }
   .bubble {
@@ -191,6 +193,9 @@
     font-size: 16px;
     line-height: 24px;
   }
+  .bubble p { margin: 0 0 10px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble.bot-bubble { max-width: 88%; }
   .bubble.user-bubble {
     background: #f7f7f7;
     color: #000;
@@ -318,6 +323,11 @@
     background: #f7f7f7;
     transition: background .15s ease, transform .15s ease, width .25s ease, height .25s ease;
   }
+  .mic-btn .send-icon { display: none; }
+  .mic-btn.has-text .mic-icon { display: none; }
+  .mic-btn.has-text .send-icon { display: block; }
+  .mic-btn.has-text { background: #000; }
+  .mic-btn.has-text .send-icon path { stroke: #fff; }
   .icon-btn.mic-btn.listening {
     background: var(--negative);
     color: #fff;
@@ -363,7 +373,8 @@
             </button>
             <input class="chat-input" id="chatInput" type="text" placeholder="Write..." autocomplete="off">
             <button class="icon-btn mic-btn" id="micBtn">
-              <svg viewBox="0 0 16 16" fill="none"><rect x="5.5" y="1" width="5" height="8" rx="2.5" stroke="#000" stroke-width="1.3"/><path d="M3 8C3 10.76 5.24 13 8 13C10.76 13 13 10.76 13 8" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><path d="M8 13V15.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/></svg>
+              <svg class="mic-icon" viewBox="0 0 16 16" fill="none"><rect x="5.5" y="1" width="5" height="8" rx="2.5" stroke="#000" stroke-width="1.3"/><path d="M3 8C3 10.76 5.24 13 8 13C10.76 13 13 10.76 13 8" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><path d="M8 13V15.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/></svg>
+              <svg class="send-icon" viewBox="0 0 16 16" fill="none"><path d="M8 13.5V2.5" stroke="#000" stroke-width="1.4" stroke-linecap="round"/><path d="M3.5 7L8 2.5L12.5 7" stroke="#000" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
           <button class="flash-btn" id="flashBtn" title="Показать виджет снова">
@@ -389,6 +400,30 @@
     const m = String(now.getMinutes()).padStart(2, '0');
     const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
     return `${h}:${m} ${ampm}`;
+  }
+
+  function fmtSnapshotStamp(date) {
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mo = String(date.getMonth() + 1).padStart(2, '0');
+    const yy = date.getFullYear();
+    return `по состоянию на ${hh}:${mm}, ${dd}.${mo}.${yy}`;
+  }
+
+  // only the most recently added widget stays "live" — everything before it becomes a dimmed snapshot
+  function snapshotExistingWidgets() {
+    feed.querySelectorAll('.widget-group:not(.snapshot)').forEach((group) => {
+      group.classList.add('snapshot');
+      const createdAt = group._createdAt || new Date();
+      const chartCard = group.querySelector('.chart-card');
+      if (chartCard && !chartCard.querySelector('.snapshot-label')) {
+        const label = document.createElement('div');
+        label.className = 'snapshot-label';
+        label.textContent = fmtSnapshotStamp(createdAt);
+        chartCard.appendChild(label);
+      }
+    });
   }
 
   function randCandles(n) {
@@ -474,18 +509,15 @@
 
   // builds one full bot "turn": a chart widget + its own stat widgets — appended as a new block, never mutating previous ones
   function buildWidgetGroup(expanded, dataOverride) {
+    snapshotExistingWidgets(); // whatever was live becomes a dimmed snapshot the moment a new widget appears
+
     const group = document.createElement('div');
     group.className = 'widget-group';
+    group._createdAt = new Date();
 
     const chartCard = document.createElement('div');
     chartCard.className = 'chart-card' + (expanded ? ' expanded' : '');
-    chartCard.innerHTML = `
-      <canvas></canvas>
-      <button class="chart-close" title="Скрыть виджет">
-        <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1L13 13M13 1L1 13" stroke="#000" stroke-width="1.6" stroke-linecap="round"/></svg>
-      </button>
-    `;
-    chartCard.querySelector('.chart-close').addEventListener('click', () => group.remove());
+    chartCard.innerHTML = `<canvas></canvas>`;
     group.appendChild(chartCard);
 
     const statsGrid = document.createElement('div');
@@ -568,10 +600,12 @@
     setTimeout(() => {
       thinkingRow.remove();
       if (normalize(rawText) === EXPLAIN_PHRASE) {
-        addBotText('Я ничего не сделал, прости');
-        addSuggestionChip('Продолжить диалог', () => {
-          sendMessage('Продолжить диалог');
-        });
+        addBotText(`
+          <p>Проанализировал EURUSD за последние 4 часа. Пара консолидируется в диапазоне 1.0820–1.0865, объёмы на попытках пробоя вверх слабые, а RSI на 1H застрял около 52 — явного импульса ни в одну сторону пока нет.</p>
+          <p>Рабочий сценарий: жду закрепления выше 1.0865 на закрытии 1H-свечи — тогда вход в лонг с целью 1.0910 (ближайший недельный уровень сопротивления) и стопом под 1.0805, за нижней границей диапазона. RR получается около 2.1, что укладывается в план.</p>
+          <p>Альтернативный сценарий: если цена уйдёт ниже 1.0800, разворачиваю логику на шорт с целью 1.0740 — там проходит 50-дневная скользящая и предыдущий локальный минимум.</p>
+          <p>Риск на сделку — не больше 1% депозита, размер лота подбираю под стоп в ~60 пунктов. Буду держать позицию до пробоя одного из уровней или до завтрашних данных по инфляции США в 15:30 — событие может резко сдвинуть волатильность.</p>
+        `);
         flashBtn.classList.add('visible'); // tap it to bring the last widget back
       } else {
         flashBtn.classList.remove('visible');
@@ -585,6 +619,7 @@
     if (!text || !text.trim()) return;
     addUserMessage(text.trim());
     chatInput.value = '';
+    micBtn.classList.remove('has-text');
     chatInput.blur(); // collapse the keyboard on send
     const thinkingRow = addThinking();
     respond(thinkingRow, text);
@@ -592,6 +627,10 @@
 
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendMessage(chatInput.value);
+  });
+
+  chatInput.addEventListener('input', () => {
+    micBtn.classList.toggle('has-text', chatInput.value.trim().length > 0);
   });
 
   micBtn.addEventListener('click', () => {
