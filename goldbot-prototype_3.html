@@ -670,21 +670,6 @@
     });
   });
 
-  // iOS Safari doesn't resize 100dvh in sync with the on-screen keyboard, which leaves the
-  // floating input hovering with a large gap above the keyboard. Track the real visible
-  // viewport height via visualViewport and pin .phone to it so the input sits flush on top.
-  const phoneEl = document.querySelector('.phone');
-  function syncViewportHeight() {
-    if (window.visualViewport) {
-      phoneEl.style.height = window.visualViewport.height + 'px';
-    }
-  }
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', syncViewportHeight);
-    window.visualViewport.addEventListener('scroll', syncViewportHeight);
-    syncViewportHeight();
-  }
-
   resetPrototype();
 })();
 </script>
