@@ -597,12 +597,12 @@
   }
 
   // special text-only branch: "объясни что сделал" gets a plain-text answer instead of a widget
-  const EXPLAIN_PHRASE = 'объясни что сделал';
+  const EXPLAIN_PHRASE = 'объясни';
 
   function respond(thinkingRow, rawText) {
     setTimeout(() => {
       thinkingRow.remove();
-      if (normalize(rawText) === EXPLAIN_PHRASE) {
+      if (normalize(rawText).includes(EXPLAIN_PHRASE)) {
         addBotText(`
           <p>Проанализировал EURUSD за последние 4 часа. Пара консолидируется в диапазоне 1.0820–1.0865, объёмы на попытках пробоя вверх слабые, а RSI на 1H застрял около 52 — явного импульса ни в одну сторону пока нет.</p>
           <p>Рабочий сценарий: жду закрепления выше 1.0865 на закрытии 1H-свечи — тогда вход в лонг с целью 1.0910 (ближайший недельный уровень сопротивления) и стопом под 1.0805, за нижней границей диапазона. RR получается около 2.1, что укладывается в план.</p>
@@ -636,7 +636,16 @@
     micBtn.classList.toggle('has-text', chatInput.value.trim().length > 0);
   });
 
-  micBtn.addEventListener('click', () => {
+  // Guarded so it fires reliably from a mouse click (desktop/preview) AND a touch tap,
+  // including while the input is focused/active — preventDefault only on touch/pen keeps the
+  // input from blurring mid-tap (which used to shrink the chat-box and move the button out from
+  // under the finger before 'click' could fire), while plain mouse clicks still work normally.
+  let micTapHandled = false;
+  function handleMicTap() {
+    if (micTapHandled) return;
+    micTapHandled = true;
+    setTimeout(() => { micTapHandled = false; }, 400);
+
     if (chatInput.value.trim()) { sendMessage(chatInput.value); return; }
     micBtn.classList.add('listening');
     chatInput.placeholder = 'Слушаю...';
@@ -645,7 +654,12 @@
       chatInput.placeholder = 'Write...';
       sendMessage('Добавь параметр такой то');
     }, 1400);
+  }
+  micBtn.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') e.preventDefault();
+    handleMicTap();
   });
+  micBtn.addEventListener('click', handleMicTap);
 
   plusBtn.addEventListener('click', () => chatInput.focus());
 
